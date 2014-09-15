@@ -26,7 +26,7 @@ type FtpConn struct {
 	fileName string
 }
 
-var user string = "liupeng"
+var user string = "admin"
 var pass string = "12345"
 var base string
 var commands map[string]string
