@@ -24,10 +24,11 @@ type FtpConn struct {
 	pasvChan chan int
 	isPasv   bool
 	fileName string
+	rest     int
 }
 
-var user string = "admin"
-var pass string = "12345"
+var user string
+var pass string
 var base string
 var commands map[string]string
 
@@ -46,14 +47,35 @@ func init() {
 		"PASV": "DoPasv",
 		"CWD":  "DoCwd",
 		"SIZE": "DoSize",
+		"REST": "DoRest",
 	}
 
 	base, _ = os.Getwd()
 }
 
+func (f *FtpConn) DoRest(strs []string) {
+	var err error
+	f.rest, err = strconv.Atoi(strs[0])
+	if err != nil {
+		log.Println(err)
+		f.rest = 0
+	}
+	f.sendString("350 set to " + strs[0])
+}
+
 func (f *FtpConn) DoSize(strs []string) {
-	file, _ := os.Open(filepath.Join(base, strs[0]))
-	fileInfo, _ := file.Stat()
+	file, err := os.Open(filepath.Join(base, strings.Join(strs, "")))
+	if err != nil {
+		log.Println(err)
+		f.sendString("553 Requested action not taken. File name not allowed")
+		return
+	}
+	fileInfo, err1 := file.Stat()
+	if err1 != nil {
+		log.Println(err1)
+		f.sendString("553 Requested action not taken. File name not allowed")
+		return
+	}
 	log.Println(fileInfo.Name())
 	f.sendString("213 " + strconv.FormatInt(fileInfo.Size(), 10))
 }
@@ -90,7 +112,7 @@ func handleConn(c net.Conn, ftpConn *FtpConn) {
 				body += s
 			}
 		}
-		log.Println(command)
+		//log.Println(command)
 		strs := strings.Split(command, " ")
 
 		if method, ok := commands[strings.ToUpper(strs[0])]; !ok {
@@ -136,7 +158,7 @@ func accept(l net.Listener, f *FtpConn) {
 
 func main() {
 
-	flag.StringVar(&user, "u", "liupeng", "set username")
+	flag.StringVar(&user, "u", "admin", "set username")
 	flag.StringVar(&pass, "p", "12345", "set password")
 	flag.StringVar(&base, "b", base, "set base path")
 	flag.Parse()
@@ -148,7 +170,7 @@ func main() {
 }
 
 func login(f *FtpConn) bool {
-	return f.userName == user && f.password == pass
+	return (f.userName == user && f.password == pass)
 }
 
 func (f *FtpConn) DoUser(strs []string) {
@@ -198,7 +220,7 @@ func (f *FtpConn) DoPort(strs []string) {
 }
 
 func (f *FtpConn) DoRetr(strs []string) {
-	fileName := strs[0]
+	fileName := strings.Join(strs, "")
 	f.sendString("150 Opening data connection.")
 	if f.isPasv {
 		f.fileName = fileName
@@ -220,7 +242,7 @@ func (f *FtpConn) DoRetr(strs []string) {
 }
 
 func (f *FtpConn) DoStor(strs []string) {
-	fileName := strs[0]
+	fileName := strings.Join(strs, "")
 	f.sendString("150 Opening data connection.")
 	if f.isPasv {
 		f.fileName = fileName
