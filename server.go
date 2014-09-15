@@ -76,7 +76,7 @@ func (f *FtpConn) DoSize(strs []string) {
 		f.sendString("553 Requested action not taken. File name not allowed")
 		return
 	}
-	log.Println(fileInfo.Name())
+	//log.Println(fileInfo.Name())
 	f.sendString("213 " + strconv.FormatInt(fileInfo.Size(), 10))
 }
 
@@ -87,7 +87,7 @@ func (f *FtpConn) DoCwd(strs []string) {
 }
 
 func (f *FtpConn) sendString(s string) {
-	log.Printf("send: %s", s)
+	//log.Printf("send: %s", s)
 	f.conn.Write([]byte(s + "\r\n"))
 }
 
@@ -102,7 +102,8 @@ func handleConn(c net.Conn, ftpConn *FtpConn) {
 			buf := make([]byte, 20)
 			l, err := c.Read(buf)
 			if err != nil {
-				log.Fatal(err)
+				log.Println(err)
+				return
 			}
 			s := string(buf[:l])
 			if strings.HasSuffix(s, "\r\n") {
@@ -114,7 +115,6 @@ func handleConn(c net.Conn, ftpConn *FtpConn) {
 		}
 		//log.Println(command)
 		strs := strings.Split(command, " ")
-
 		if method, ok := commands[strings.ToUpper(strs[0])]; !ok {
 			ftpConn.sendString("502 unkonw command.")
 			continue
@@ -225,7 +225,10 @@ func (f *FtpConn) DoRetr(strs []string) {
 	if f.isPasv {
 		f.fileName = fileName
 		f.pasvChan <- 3
-		<-f.pasvChan
+		if -3 != <-f.pasvChan {
+			f.sendString("553 Requested action not taken. File name not allowed")
+			return
+		}
 	} else {
 		c, _ := net.Dial("tcp", f.dataIp+":"+strconv.Itoa(f.dataPort))
 
@@ -233,7 +236,9 @@ func (f *FtpConn) DoRetr(strs []string) {
 		defer fout.Close()
 		defer c.Close()
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			f.sendString("553 Requested action not taken. File name not allowed")
+			return
 		}
 		io.Copy(c, fout)
 	}
@@ -247,7 +252,10 @@ func (f *FtpConn) DoStor(strs []string) {
 	if f.isPasv {
 		f.fileName = fileName
 		f.pasvChan <- 2
-		<-f.pasvChan
+		if -2 != <-f.pasvChan {
+			f.sendString("553 Requested action not taken. File name not allowed")
+			return
+		}
 	} else {
 		c, _ := net.Dial("tcp", f.dataIp+":"+strconv.Itoa(f.dataPort))
 
@@ -255,7 +263,9 @@ func (f *FtpConn) DoStor(strs []string) {
 		defer fout.Close()
 		defer c.Close()
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			f.sendString("553 Requested action not taken. File name not allowed")
+			return
 		}
 		io.Copy(fout, c)
 	}
@@ -311,16 +321,22 @@ func dataAccept(l net.Listener, f *FtpConn) {
 		fout, err := os.Create(filepath.Join(getRealPath(f.wd), f.fileName))
 		defer fout.Close()
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			f.pasvChan <- 0
+			return
 		}
 		io.Copy(fout, conn)
+		f.pasvChan <- -2
 	case 3: //retr
 		fout, err := os.Open(filepath.Join(getRealPath(f.wd), f.fileName))
 		defer fout.Close()
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			f.pasvChan <- 0
+			return
 		}
 		io.Copy(conn, fout)
+		f.pasvChan <- -3
 	}
 	conn.Close()
 	l.Close()
